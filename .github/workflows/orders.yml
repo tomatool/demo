@@ -42,8 +42,8 @@ jobs:
       run:
         working-directory: services/orders
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: services/orders/go.mod
           cache-dependency-path: services/orders/go.sum
@@ -52,7 +52,7 @@ jobs:
         run: go test ./...
       - name: Build
         run: CGO_ENABLED=0 go build -o bin/orders .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: build
           path: |
@@ -68,8 +68,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: build
           path: services/orders/bin/
@@ -84,7 +84,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/tomato-report
         with:
           service: orders

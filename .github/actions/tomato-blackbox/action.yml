@@ -29,7 +29,7 @@ runs:
 
     - name: Keep the reports and logs
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: blackbox-${{ github.job }}
         path: |

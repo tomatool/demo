@@ -31,7 +31,11 @@ function product(p) {
 
 function catalogError(res, err) {
   if (err.code === grpcStatus.NOT_FOUND) return send(res, 404, { error: 'product not found' });
-  if (err.code === grpcStatus.DEADLINE_EXCEEDED) return send(res, 504, { error: 'catalog timed out' });
+  // gateway never cancels a call itself: a cancelled call ran out of time
+  // while grpc-js was retrying it.
+  if (err.code === grpcStatus.DEADLINE_EXCEEDED || err.code === grpcStatus.CANCELLED) {
+    return send(res, 504, { error: 'catalog timed out' });
+  }
   console.error('catalog call failed:', err.message);
   return send(res, 503, { error: 'catalog is unavailable' });
 }
