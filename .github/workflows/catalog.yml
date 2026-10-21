@@ -59,17 +59,12 @@ jobs:
       - name: Build, instrumented for coverage
         env:
           RUSTFLAGS: -C instrument-coverage
-        run: |
-          cargo build --release --locked
-          # The LLVM tools of this very compiler, to read the coverage it writes.
-          cp "$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/host: //p')/bin/"{llvm-profdata,llvm-cov} target/release/
+        run: cargo build --release --locked
       - uses: actions/upload-artifact@v7
         with:
           name: build
           path: |
             services/catalog/target/release/catalog
-            services/catalog/target/release/llvm-profdata
-            services/catalog/target/release/llvm-cov
 
   coverage:
     uses: ./.github/workflows/tomato-coverage.yml
@@ -89,7 +84,12 @@ jobs:
           name: build
           path: services/catalog/target/release/
       - name: Restore the build
-        run: chmod +x services/catalog/target/release/* && mkdir -p services/catalog/coverage
+        run: chmod +x services/catalog/target/release/catalog && mkdir -p services/catalog/coverage
+      # The LLVM tools that read the coverage, of the same stable Rust that
+      # built the binary minutes ago.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
       - uses: ./.github/actions/tomato-blackbox
         with:
           service: services/catalog
@@ -97,8 +97,9 @@ jobs:
         if: always()
         working-directory: services/catalog
         run: |
-          target/release/llvm-profdata merge -sparse coverage/*.profraw -o coverage/catalog.profdata
-          target/release/llvm-cov export -format=lcov target/release/catalog \
+          LLVM="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/host: //p')/bin"
+          "$LLVM/llvm-profdata" merge -sparse coverage/*.profraw -o coverage/catalog.profdata
+          "$LLVM/llvm-cov" export -format=lcov target/release/catalog \
             -instr-profile=coverage/catalog.profdata > coverage/lcov.info
       - uses: ./.github/actions/code-coverage
         if: always()
