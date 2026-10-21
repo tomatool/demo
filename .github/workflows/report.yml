@@ -33,8 +33,10 @@ jobs:
         run: |
           for wf in gateway orders catalog payments notifications e2e; do
             mkdir -p "data/$wf"
-            gh run list -R "$GITHUB_REPOSITORY" -w "$wf" -b main -s completed -L 1 \
-              --json databaseId,headSha,conclusion,createdAt,displayTitle > "data/$wf/meta.json"
+            # The latest run that finished: a newer push cancels runs in progress.
+            gh run list -R "$GITHUB_REPOSITORY" -w "$wf" -b main -s completed -L 20 \
+              --json databaseId,headSha,conclusion,createdAt,displayTitle \
+              | jq '[.[] | select(.conclusion == "success" or .conclusion == "failure")][:1]' > "data/$wf/meta.json"
             id=$(jq -r '.[0].databaseId // empty' "data/$wf/meta.json")
             [ -n "$id" ] || continue
             for artifact in code-coverage coverage blackbox-blackbox; do
@@ -42,7 +44,7 @@ jobs:
             done
           done
       - name: Build the page
-        run: python3 .github/scripts/report.py data site
+        run: python3 .github/report/report.py data site
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

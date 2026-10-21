@@ -142,7 +142,15 @@ svg = f'''<svg viewBox="0 0 980 470" role="img" aria-label="The shop's services,
   <g class="who"><rect x="20" y="195" width="110" height="60" rx="30"/><text x="75" y="221" text-anchor="middle">shopper</text>
     <text class="sub" x="75" y="239" text-anchor="middle">e2e {f"{e2e_sc[0]}/{e2e_sc[1]}" if e2e_sc else "—"} {"✓" if e2e_ok else "✗"}</text></g>
   {"".join(service_node(n, l) for n, l in SERVICES)}
-  {pill(580, 69, "Postgres")}{pill(430, 273, "Postgres")}{pill(650, 418, "Postgres · S3")}
+  <g class="deps" aria-label="Dependencies">
+    <path class="dl" d="M570 80 H592"/>{pill(592, 69, "Postgres")}
+    <path class="dl" d="M485 265 V290"/>{pill(450, 290, "Postgres")}
+    <path class="dl" d="M520 185 L560 152"/><path class="dl" d="M690 185 L650 152"/>{pill(560, 130, "Kafka · MSK IAM")}
+    <path class="dl" d="M780 185 L800 152"/>{pill(760, 130, "AWS IAM role")}
+    <path class="dl" d="M540 265 L585 300"/><path class="dl" d="M650 265 L640 300"/><path class="dl" d="M660 330 L630 322"/>{pill(560, 300, "RabbitMQ")}
+    <path class="dl" d="M680 410 V428"/>{pill(645, 428, "Postgres")}
+    <path class="dl" d="M760 410 V428"/>{pill(735, 428, "S3 · MinIO")}
+  </g>
   {pill(850, 214, "Stripe", "ext")}{pill(850, 326, "SendGrid", "ext")}{pill(850, 384, "Slack", "ext")}
 </svg>'''
 
@@ -202,6 +210,12 @@ svg {{ display: block; width: 100%; height: auto; font-family: ui-monospace, Men
 .svc .l {{ fill: var(--fg-3); font-size: 11.5px; }} .svc .p {{ font-size: 20px; font-weight: 700; }} .svc .s {{ fill: var(--fg-2); font-size: 11.5px; }}
 .who rect {{ fill: var(--bg-2); stroke: var(--line-strong); }} .who text {{ fill: var(--fg-0); font-size: 13px; font-weight: 700; }}
 .who .sub {{ fill: var(--fg-2); font-size: 11px; font-weight: 400; }}
+.card {{ position: relative; }}
+.toggle {{ position: absolute; top: 12px; right: 14px; display: flex; align-items: center; gap: 6px; font: 12.5px ui-monospace, Menlo, monospace; color: var(--fg-2); cursor: pointer; user-select: none; }}
+.toggle input {{ accent-color: var(--fg-2); }}
+.deps {{ opacity: 0; transition: opacity 0.35s; pointer-events: none; }}
+.card.show-deps .deps {{ opacity: 0.75; }}
+.dl {{ fill: none; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }}
 .infra rect {{ fill: var(--bg-2); stroke: var(--line-strong); }} .infra text, .ext text {{ fill: var(--fg-2); font-size: 11px; }}
 .ext rect {{ fill: none; stroke: var(--line-strong); stroke-dasharray: 4 3; }}
 .edge {{ fill: none; stroke-width: 1.8; }} .el {{ fill: var(--fg-3); font-size: 10.5px; }}
@@ -228,16 +242,28 @@ footer {{ margin-top: 24px; font-size: 12.5px; color: var(--fg-3); }}
   <span>tomato <code>{esc(", ".join(versions) or "unknown")}</code></span>
   <span>{esc(latest.get("at", "")[:16].replace("T", " "))} UTC</span>
 </div>
-<div class="card">
+<div class="card" id="diagram">
+  <label class="toggle"><input type="checkbox" id="deps"> dependencies</label>
   {svg}
   <div class="legend"><span>code coverage of each service's black-box run</span><span>50% <span class="grad"></span> 100%</span>
-    <span>edges: what the e2e suite ran through</span><span>dashed: third parties, stubbed</span></div>
+    <span>edges: what the e2e suite ran through</span><span>dashed: third parties, stubbed</span><span>toggle dependencies for each service's databases and brokers</span></div>
 </div>
 <div class="table"><table>
 <tr><th>Component</th><th>Code coverage</th><th>Scenarios</th><th>Step coverage</th><th>Tested at</th></tr>
 {"".join(rows)}
 </table></div>
 <ul class="cases">{e2e_cases}</ul>
+<script>
+(function () {{
+  var card = document.getElementById("diagram"), box = document.getElementById("deps");
+  function set(on) {{ card.classList.toggle("show-deps", on); box.checked = on; }}
+  try {{ set(localStorage.getItem("deps") === "1"); }} catch (e) {{}}
+  box.addEventListener("change", function () {{
+    set(box.checked);
+    try {{ localStorage.setItem("deps", box.checked ? "1" : "0"); }} catch (e) {{}}
+  }});
+}})();
+</script>
 <footer>Each service runs on its own pipeline and only when it changes, so a row can be from an earlier commit than the header.
   Generated {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC from <a href="https://github.com/{REPO}">{REPO}</a>.</footer>
 </main></body></html>'''
