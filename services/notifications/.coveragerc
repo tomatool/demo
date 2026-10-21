@@ -1,0 +1,7 @@
+# Coverage of the black-box run: the process tomato starts measures itself
+# when COVERAGE_PROCESS_START points here (see the pipeline).
+[run]
+source = notifications
+data_file = coverage/.coverage
+parallel = true
+sigterm = true

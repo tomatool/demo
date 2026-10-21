@@ -8,8 +8,12 @@ services/notifications/.venv/
 **/__pycache__/
 *.egg-info/
 
+# coverage data
+**/coverage/
+
 # tomato run logs and reports
 .tomato/
 reports/
 coverage.md
 coverage.json
+*.profraw

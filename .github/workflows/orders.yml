@@ -6,6 +6,9 @@ name: orders
 #   build ──────► blackbox ──┐
 #                             ├──► report (job summary + PR comment)
 #   coverage ─────────────────┘
+#
+# The build job builds orders instrumented for coverage, and blackbox collects
+# which of its code ran while tomato tested it.
 
 on:
   push:
@@ -50,8 +53,8 @@ jobs:
       - run: go vet ./...
       - name: Unit tests
         run: go test ./...
-      - name: Build
-        run: CGO_ENABLED=0 go build -o bin/orders .
+      - name: Build, instrumented for coverage
+        run: CGO_ENABLED=0 go build -cover -o bin/orders .
       - uses: actions/upload-artifact@v7
         with:
           name: build
@@ -67,17 +70,35 @@ jobs:
   blackbox:
     needs: build
     runs-on: ubuntu-latest
+    env:
+      GOCOVERDIR: ${{ github.workspace }}/services/orders/coverage/raw
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           name: build
           path: services/orders/bin/
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: services/orders/go.mod
+          cache: false
       - name: Restore the build
-        run: chmod +x services/orders/bin/orders
+        run: chmod +x services/orders/bin/orders && mkdir -p "$GOCOVERDIR"
       - uses: ./.github/actions/tomato-blackbox
         with:
           service: services/orders
+      - name: Collect code coverage
+        if: always()
+        working-directory: services/orders
+        run: go tool covdata textfmt -i="$GOCOVERDIR" -o coverage/cover.out || true
+      - uses: ./.github/actions/code-coverage
+        if: always()
+        with:
+          service: services/orders
+          format: go
+          report: coverage/cover.out
+          floor: 70
+          exclude: /gen/
 
   report:
     needs: [coverage, blackbox]

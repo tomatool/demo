@@ -1,5 +1,5 @@
 name: tomato report
-description: Put a service's black-box results and step coverage in one PR comment.
+description: Put a service's black-box results, code coverage and step coverage in one PR comment.
 inputs:
   service:
     required: true
@@ -8,7 +8,7 @@ runs:
   steps:
     - uses: actions/download-artifact@v8
       with:
-        pattern: "{coverage,blackbox-*}"
+        pattern: "{coverage,code-coverage,blackbox-*}"
         path: reports
         merge-multiple: true
 
@@ -21,7 +21,9 @@ runs:
           echo
           cat reports/reports/results.md 2>/dev/null || cat reports/results.md 2>/dev/null || echo "### ❌ No black-box results"
           echo
-          cat reports/coverage.md 2>/dev/null || echo "### ❌ No coverage report"
+          cat reports/reports/code-coverage.md 2>/dev/null || cat reports/code-coverage.md 2>/dev/null || echo "### ❌ No code coverage report"
+          echo
+          cat reports/coverage.md 2>/dev/null || echo "### ❌ No step coverage report"
           echo
           echo "[Workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
         } > report.md

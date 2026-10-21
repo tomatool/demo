@@ -6,6 +6,9 @@ name: notifications
 #   build ──────► blackbox ──┐
 #                             ├──► report (job summary + PR comment)
 #   coverage ─────────────────┘
+#
+# The build job builds notifications, and blackbox runs it under coverage.py and collects
+# which of its code ran while tomato tested it.
 
 on:
   push:
@@ -66,6 +69,10 @@ jobs:
   blackbox:
     needs: build
     runs-on: ubuntu-latest
+    env:
+      # The .pth hook below starts coverage.py in every Python process that
+      # sees this, including the one tomato starts.
+      COVERAGE_PROCESS_START: ${{ github.workspace }}/services/notifications/.coveragerc
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -76,10 +83,29 @@ jobs:
         with:
           python-version: "3.12"
       - name: Restore the build
-        run: python -m venv services/notifications/.venv && services/notifications/.venv/bin/pip install services/notifications/dist/*.whl
+        working-directory: services/notifications
+        run: |
+          mkdir -p coverage
+          python -m venv .venv
+          .venv/bin/pip install dist/*.whl coverage
+          echo "import coverage; coverage.process_startup()" \
+            > "$(.venv/bin/python -c 'import site; print(site.getsitepackages()[0])')/coverage-blackbox.pth"
       - uses: ./.github/actions/tomato-blackbox
         with:
           service: services/notifications
+      - name: Collect code coverage
+        if: always()
+        working-directory: services/notifications
+        run: |
+          .venv/bin/coverage combine --rcfile=.coveragerc
+          .venv/bin/coverage lcov --rcfile=.coveragerc -o coverage/lcov.info
+      - uses: ./.github/actions/code-coverage
+        if: always()
+        with:
+          service: services/notifications
+          format: lcov
+          report: coverage/lcov.info
+          floor: 85
 
   report:
     needs: [coverage, blackbox]

@@ -6,6 +6,9 @@ name: gateway
 #   build ──────► blackbox ──┐
 #                             ├──► report (job summary + PR comment)
 #   coverage ─────────────────┘
+#
+# The build job builds gateway, and blackbox runs it with V8 coverage on and collects
+# which of its code ran while tomato tested it.
 
 on:
   push:
@@ -68,6 +71,8 @@ jobs:
   blackbox:
     needs: build
     runs-on: ubuntu-latest
+    env:
+      NODE_V8_COVERAGE: ${{ github.workspace }}/services/gateway/coverage/v8
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -80,6 +85,19 @@ jobs:
       - uses: ./.github/actions/tomato-blackbox
         with:
           service: services/gateway
+      - name: Collect code coverage
+        if: always()
+        working-directory: services/gateway
+        run: |
+          npx --yes c8@10 report --temp-directory "$NODE_V8_COVERAGE" --reports-dir coverage \
+            --reporter=lcov --src src --include 'src/**'
+      - uses: ./.github/actions/code-coverage
+        if: always()
+        with:
+          service: services/gateway
+          format: lcov
+          report: coverage/lcov.info
+          floor: 90
 
   report:
     needs: [coverage, blackbox]

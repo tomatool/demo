@@ -35,7 +35,7 @@ fun main() {
     val worker = thread(name = "orders-consumer") { consumer.run() }
     Runtime.getRuntime().addShutdownHook(thread(start = false) {
         consumer.stop()
-        worker.join(5_000)
+        worker.join(3_000)
         outcomes.close()
         health.stop(0)
     })

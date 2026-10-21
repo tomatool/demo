@@ -6,6 +6,9 @@ name: payments
 #   build ──────► blackbox ──┐
 #                             ├──► report (job summary + PR comment)
 #   coverage ─────────────────┘
+#
+# The build job builds payments, and blackbox runs it with the JaCoCo agent and collects
+# which of its code ran while tomato tested it.
 
 on:
   push:
@@ -63,6 +66,10 @@ jobs:
   blackbox:
     needs: build
     runs-on: ubuntu-latest
+    env:
+      JACOCO: "0.8.13"
+      # Read by the start script; the agent writes coverage when the JVM exits.
+      JAVA_OPTS: -javaagent:${{ github.workspace }}/jacoco/agent.jar=destfile=${{ github.workspace }}/services/payments/coverage/blackbox.exec,includes=demo.*
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -75,9 +82,28 @@ jobs:
           java-version: 17
       - name: Restore the build
         run: chmod +x services/payments/build/install/payments/bin/payments
+      - name: Get JaCoCo
+        run: |
+          mkdir -p jacoco
+          curl -fsSL -o jacoco/agent.jar "https://repo1.maven.org/maven2/org/jacoco/org.jacoco.agent/$JACOCO/org.jacoco.agent-$JACOCO-runtime.jar"
+          curl -fsSL -o jacoco/cli.jar "https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/$JACOCO/org.jacoco.cli-$JACOCO-nodeps.jar"
       - uses: ./.github/actions/tomato-blackbox
         with:
           service: services/payments
+      - name: Collect code coverage
+        if: always()
+        working-directory: services/payments
+        run: |
+          java -jar "$GITHUB_WORKSPACE/jacoco/cli.jar" report coverage/blackbox.exec \
+            --classfiles build/install/payments/lib/payments.jar --sourcefiles src/main/kotlin \
+            --xml coverage/jacoco.xml --quiet
+      - uses: ./.github/actions/code-coverage
+        if: always()
+        with:
+          service: services/payments
+          format: jacoco
+          report: coverage/jacoco.xml
+          floor: 85
 
   report:
     needs: [coverage, blackbox]

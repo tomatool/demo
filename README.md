@@ -114,8 +114,8 @@ to that service, and all of the same shape:
 
 ```mermaid
 flowchart LR
-    build["<b>build</b><br/>toolchain of the language<br/>lint · unit tests · artifact"] --> blackbox
-    blackbox["<b>blackbox</b><br/>tomato run against<br/>the built artifact"] --> report
+    build["<b>build</b><br/>toolchain of the language<br/>lint · unit tests · instrumented artifact"] --> blackbox
+    blackbox["<b>blackbox</b><br/>tomato run against<br/>the built artifact<br/>+ its code coverage"] --> report
     coverage["<b>coverage</b><br/>tomato validate<br/>tomato coverage + gate"] --> report
     report["<b>report</b><br/>job summary<br/>PR comment per service"]
 ```
@@ -132,8 +132,25 @@ flowchart LR
 - **blackbox** installs tomato and runs the suite; tomato starts the
   containers on the runner's Docker. JUnit results and every container's and
   the app's logs are kept as artifacts.
-- **report** puts the results and the coverage table in the job summary and,
-  on a pull request, in one comment per service, updated on every push.
+
+  It also measures **code coverage of the black-box run**: which of the
+  service's own lines ran while tomato tested it, with no test code inside the
+  service. The service writes its coverage when tomato stops it, so every
+  service exits cleanly on SIGTERM. Below the service's floor, the job fails.
+
+  | Service | How its coverage is collected | Floor |
+  |---|---|---|
+  | gateway | `NODE_V8_COVERAGE`, reported with `c8` | 90% |
+  | orders | built with `go build -cover`, `GOCOVERDIR` | 70% |
+  | catalog | built with `-C instrument-coverage`, `llvm-cov` | 70% |
+  | payments | the JaCoCo agent, through `JAVA_OPTS` | 85% |
+  | notifications | coverage.py, started by `COVERAGE_PROCESS_START` | 85% |
+
+  tomato passes its environment on to the app, so none of this is in
+  `tomato.yml`: the same suite runs with or without coverage.
+- **report** puts the results, the code coverage and the step coverage in the
+  job summary and, on a pull request, in one comment per service, updated on
+  every push.
 
 The [e2e](.github/workflows/e2e.yml) workflow runs the whole shop on any
 change. The pieces are shared: [setup-tomato](.github/actions/setup-tomato),

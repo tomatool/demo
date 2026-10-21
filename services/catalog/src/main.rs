@@ -165,6 +165,19 @@ async fn connect(url: &str) -> Result<Client, tokio_postgres::Error> {
     }
 }
 
+/// Resolves on Ctrl-C or SIGTERM, which is how Kubernetes, Docker and tomato
+/// stop a process. Returning from main (rather than being killed) is also
+/// what writes coverage data out when the binary is instrumented.
+async fn shutdown() {
+    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("installing the SIGTERM handler");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = term.recv() => {}
+    }
+    eprintln!("catalog shutting down");
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url = env::var("DATABASE_URL")
@@ -183,9 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Server::builder()
         .add_service(reflection)
         .add_service(CatalogServiceServer::new(Catalog { db: Arc::new(db) }))
-        .serve_with_shutdown(addr, async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .serve_with_shutdown(addr, shutdown())
         .await?;
     Ok(())
 }

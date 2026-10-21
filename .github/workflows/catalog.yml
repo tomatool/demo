@@ -6,6 +6,9 @@ name: catalog
 #   build ──────► blackbox ──┐
 #                             ├──► report (job summary + PR comment)
 #   coverage ─────────────────┘
+#
+# The build job builds catalog instrumented for coverage, and blackbox collects
+# which of its code ran while tomato tested it.
 
 on:
   push:
@@ -46,20 +49,27 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: services/catalog
       - run: cargo clippy --locked -- -D warnings
       - name: Unit tests
         run: cargo test --locked
-      - name: Build
-        run: cargo build --release --locked
+      - name: Build, instrumented for coverage
+        env:
+          RUSTFLAGS: -C instrument-coverage
+        run: |
+          cargo build --release --locked
+          # The LLVM tools of this very compiler, to read the coverage it writes.
+          cp "$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/host: //p')/bin/"{llvm-profdata,llvm-cov} target/release/
       - uses: actions/upload-artifact@v7
         with:
           name: build
           path: |
             services/catalog/target/release/catalog
+            services/catalog/target/release/llvm-profdata
+            services/catalog/target/release/llvm-cov
 
   coverage:
     uses: ./.github/workflows/tomato-coverage.yml
@@ -70,6 +80,8 @@ jobs:
   blackbox:
     needs: build
     runs-on: ubuntu-latest
+    env:
+      LLVM_PROFILE_FILE: ${{ github.workspace }}/services/catalog/coverage/catalog-%p-%m.profraw
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -77,10 +89,25 @@ jobs:
           name: build
           path: services/catalog/target/release/
       - name: Restore the build
-        run: chmod +x services/catalog/target/release/catalog
+        run: chmod +x services/catalog/target/release/* && mkdir -p services/catalog/coverage
       - uses: ./.github/actions/tomato-blackbox
         with:
           service: services/catalog
+      - name: Collect code coverage
+        if: always()
+        working-directory: services/catalog
+        run: |
+          target/release/llvm-profdata merge -sparse coverage/*.profraw -o coverage/catalog.profdata
+          target/release/llvm-cov export -format=lcov target/release/catalog \
+            -instr-profile=coverage/catalog.profdata > coverage/lcov.info
+      - uses: ./.github/actions/code-coverage
+        if: always()
+        with:
+          service: services/catalog
+          format: lcov
+          report: coverage/lcov.info
+          floor: 70
+          exclude: (\.cargo/registry|/rustc/|/rustlib/|/target/)
 
   report:
     needs: [coverage, blackbox]

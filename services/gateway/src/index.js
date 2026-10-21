@@ -106,6 +106,12 @@ const server = createServer((req, res) => {
 });
 
 server.listen(config.port, () => console.log(`gateway listening on :${config.port}`));
+// Exit promptly on SIGTERM: stop accepting, drop idle keep-alive connections,
+// and let process.exit write out coverage data when it is being collected.
 for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => server.close(() => process.exit(0)));
+  process.on(signal, () => {
+    server.close(() => process.exit(0));
+    server.closeIdleConnections();
+    setTimeout(() => process.exit(0), 2000).unref();
+  });
 }

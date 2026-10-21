@@ -1,0 +1,39 @@
+name: Code coverage
+description: Gate and report the code coverage a black-box run collected.
+inputs:
+  service:
+    description: Directory of the service
+    required: true
+  format:
+    description: lcov, go or jacoco
+    required: true
+  report:
+    description: The coverage report, relative to the service directory
+    required: true
+  floor:
+    description: Minimum total coverage, in percent
+    default: "0"
+  exclude:
+    description: Regex of source paths to leave out (generated code, dependencies)
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Gate and summarise
+      shell: bash
+      working-directory: ${{ inputs.service }}
+      run: |
+        mkdir -p reports
+        python3 "$GITHUB_WORKSPACE/.github/scripts/code_coverage.py" "${{ inputs.format }}" "${{ inputs.report }}" \
+          "${{ inputs.service }}" "${{ inputs.floor }}" "${{ inputs.exclude }}" > reports/code-coverage.md || status=$?
+        cat reports/code-coverage.md >> "$GITHUB_STEP_SUMMARY"
+        exit ${status:-0}
+
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: code-coverage
+        path: |
+          ${{ inputs.service }}/reports/code-coverage.md
+          ${{ inputs.service }}/${{ inputs.report }}
+        if-no-files-found: ignore
