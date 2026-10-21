@@ -4,6 +4,10 @@
 # parties, Stripe, SendGrid and Slack, are stand-ins (WireMock), because the
 # real ones are not ours to start.
 #
+# Run it from this directory (`cd e2e && tomato run`): the volumes below are
+# ${PWD}-absolute, as tomato v2.7.0 hands a relative bind source to Docker as a
+# named volume when tomato.yml is in the working directory.
+#
 # gateway is the app under test; a shopper only ever talks to it. Everything
 # else is checked by its effects: rows in each service's database and the
 # requests the providers received.
@@ -22,7 +26,7 @@ containers:
       POSTGRES_DB: shop
     ports: ["5432/tcp"]
     volumes:
-      - ./init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
+      - ${PWD}/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
     wait_for:
       type: log
       target: "database system is ready to accept connections"
@@ -56,7 +60,7 @@ containers:
     image: wiremock/wiremock:3.13.1
     ports: ["8080/tcp"]
     volumes:
-      - ./wiremock/stripe:/home/wiremock
+      - ${PWD}/wiremock/stripe:/home/wiremock
     wait_for:
       type: http
       path: /__admin/health
@@ -66,7 +70,7 @@ containers:
     image: wiremock/wiremock:3.13.1
     ports: ["8080/tcp"]
     volumes:
-      - ./wiremock/sendgrid:/home/wiremock
+      - ${PWD}/wiremock/sendgrid:/home/wiremock
     wait_for:
       type: http
       path: /__admin/health
@@ -76,7 +80,7 @@ containers:
     image: wiremock/wiremock:3.13.1
     ports: ["8080/tcp"]
     volumes:
-      - ./wiremock/slack:/home/wiremock
+      - ${PWD}/wiremock/slack:/home/wiremock
     wait_for:
       type: http
       path: /__admin/health
