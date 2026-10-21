@@ -1,0 +1,92 @@
+name: gateway
+
+# gateway (Node.js): build and unit-test it, then test the built artifact as
+# a black box with tomato, and report the results with tomato's step coverage.
+#
+#   build ──────► blackbox ──┐
+#                             ├──► report (job summary + PR comment)
+#   coverage ─────────────────┘
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/gateway/**'
+      - 'proto/**'
+      - '.github/workflows/gateway.yml'
+      - '.github/workflows/tomato-coverage.yml'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+  pull_request:
+    paths:
+      - 'services/gateway/**'
+      - 'proto/**'
+      - '.github/workflows/gateway.yml'
+      - '.github/workflows/tomato-coverage.yml'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/gateway/package-lock.json
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: |
+            services/gateway/src/
+            services/gateway/node_modules/
+            services/gateway/package.json
+
+  coverage:
+    uses: ./.github/workflows/tomato-coverage.yml
+    with:
+      service: services/gateway
+      min-total: 25
+
+  blackbox:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: services/gateway/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: ./.github/actions/tomato-blackbox
+        with:
+          service: services/gateway
+
+  report:
+    needs: [coverage, blackbox]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/tomato-report
+        with:
+          service: gateway

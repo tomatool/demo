@@ -1,0 +1,90 @@
+# Black-box suite for orders. tomato starts the real dependencies (Postgres,
+# Kafka, RabbitMQ) in containers, stands in for the catalog service with a gRPC
+# stub, runs the built binary, and talks to it only the way other services do:
+# over HTTP, gRPC, Kafka and RabbitMQ.
+version: 2
+
+settings:
+  timeout: 5m
+  output: "pretty,junit:reports/junit.xml"
+
+containers:
+  postgres:
+    image: postgres:16-alpine
+    env:
+      POSTGRES_USER: orders
+      POSTGRES_PASSWORD: orders
+      POSTGRES_DB: orders
+    ports: ["5432/tcp"]
+    wait_for:
+      type: port
+      target: "5432"
+
+  kafka:
+    preset: kafka
+
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    ports: ["5672/tcp"]
+    wait_for:
+      type: log
+      target: "Server startup complete"
+      timeout: 120s
+
+app:
+  command: ./bin/orders            # built by `make build` / the pipeline's build job
+  port: 8080
+  ready:
+    type: http
+    path: /health
+    timeout: 60s
+  wait: 1s
+  env:
+    PORT: "8080"
+    DATABASE_URL: "postgres://orders:orders@{{.postgres.host}}:{{.postgres.port.5432}}/orders?sslmode=disable"
+    CATALOG_ADDR: "{{.catalog.address}}"
+    KAFKA_BROKERS: "{{.kafka.host}}:{{.kafka.port.9092}}"
+    RABBITMQ_URL: "amqp://guest:guest@{{.rabbitmq.host}}:{{.rabbitmq.port.5672}}/"
+
+resources:
+  # How clients reach orders.
+  api:
+    type: http
+    base_url: http://localhost:8080
+
+  # orders' own database, to set up state and assert what was stored.
+  db:
+    type: postgres
+    container: postgres
+    database: orders
+    options:
+      user: orders
+      password: orders
+
+  # The catalog service, stubbed from its proto.
+  catalog:
+    type: grpc-server
+    options:
+      port: 50061
+      descriptor_set: ../../proto/catalog.binpb
+
+  # What orders announces.
+  events:
+    type: kafka
+    container: kafka
+    options:
+      topics: [orders.created]
+
+  # Where payments reports back.
+  mq:
+    type: rabbitmq
+    container: rabbitmq
+    options:
+      exchanges:
+        - name: payments
+          type: topic
+          durable: true
+
+features:
+  paths:
+    - ./features

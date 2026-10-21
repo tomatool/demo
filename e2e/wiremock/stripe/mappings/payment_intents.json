@@ -1,0 +1,33 @@
+{
+  "mappings": [
+    {
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "url": "/v1/payment_intents",
+        "bodyPatterns": [{ "contains": "amount=250000" }]
+      },
+      "response": {
+        "status": 402,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "error": {
+            "type": "card_error",
+            "code": "card_declined",
+            "decline_code": "insufficient_funds",
+            "message": "Your card has insufficient funds."
+          }
+        }
+      }
+    },
+    {
+      "priority": 2,
+      "request": { "method": "POST", "url": "/v1/payment_intents" },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": { "id": "pi_e2e", "object": "payment_intent", "status": "succeeded" }
+      }
+    }
+  ]
+}

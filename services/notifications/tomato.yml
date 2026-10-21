@@ -1,0 +1,108 @@
+# Black-box suite for notifications. tomato starts Postgres, RabbitMQ and an
+# S3 (MinIO), stands in for SendGrid and Slack with HTTP stubs, publishes
+# payment events the way payments does, and asserts on the emails sent, the
+# Slack alerts, the archive in S3 and what was recorded.
+version: 2
+
+settings:
+  timeout: 5m
+  output: "pretty,junit:reports/junit.xml"
+
+containers:
+  postgres:
+    image: postgres:16-alpine
+    env:
+      POSTGRES_USER: notifications
+      POSTGRES_PASSWORD: notifications
+      POSTGRES_DB: notifications
+    ports: ["5432/tcp"]
+    wait_for:
+      type: port
+      target: "5432"
+
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    command: ["server", "/data"]
+    env:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports: ["9000/tcp"]
+    wait_for:
+      type: port
+      target: "9000"
+
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    ports: ["5672/tcp"]
+    wait_for:
+      type: log
+      target: "Server startup complete"
+      timeout: 120s
+
+app:
+  command: .venv/bin/python -m notifications  # installed by `pip install -e .` / the pipeline's build job
+  port: 8082
+  ready:
+    type: http
+    path: /health
+    timeout: 60s
+  wait: 1s
+  env:
+    PORT: "8082"
+    DATABASE_URL: "postgres://notifications:notifications@{{.postgres.host}}:{{.postgres.port.5432}}/notifications"
+    RABBITMQ_URL: "amqp://guest:guest@{{.rabbitmq.host}}:{{.rabbitmq.port.5672}}/"
+    SENDGRID_API_BASE: "{{.sendgrid.url}}"
+    SENDGRID_API_KEY: SG.test-key
+    SLACK_WEBHOOK_URL: "{{.slack.url}}/services/T000/B000/XXXX"
+    ARCHIVE_BUCKET: email-archive
+    # boto3 finds S3 here; on AWS these come from the pod's role instead.
+    AWS_ENDPOINT_URL_S3: "http://{{.minio.host}}:{{.minio.port.9000}}"
+    AWS_ACCESS_KEY_ID: minioadmin
+    AWS_SECRET_ACCESS_KEY: minioadmin
+    AWS_REGION: eu-central-1
+
+resources:
+  # notifications' small HTTP API.
+  api:
+    type: http
+    base_url: http://localhost:8082
+
+  # notifications' own database.
+  db:
+    type: postgres
+    container: postgres
+    database: notifications
+    options:
+      user: notifications
+      password: notifications
+
+  # Where payments publishes payment outcomes.
+  mq:
+    type: rabbitmq
+    container: rabbitmq
+    options:
+      exchanges:
+        - name: payments
+          type: topic
+          durable: true
+
+  # The email archive.
+  archive:
+    type: s3
+    container: minio
+    options:
+      buckets: [email-archive]
+
+  # SendGrid and a Slack incoming webhook, stubbed over HTTP.
+  sendgrid:
+    type: http-server
+    options:
+      port: 18091
+  slack:
+    type: http-server
+    options:
+      port: 18092
+
+features:
+  paths:
+    - ./features

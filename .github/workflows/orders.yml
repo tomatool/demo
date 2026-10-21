@@ -1,0 +1,90 @@
+name: orders
+
+# orders (Go): build and unit-test it, then test the built artifact as
+# a black box with tomato, and report the results with tomato's step coverage.
+#
+#   build ──────► blackbox ──┐
+#                             ├──► report (job summary + PR comment)
+#   coverage ─────────────────┘
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/orders/**'
+      - 'proto/**'
+      - '.github/workflows/orders.yml'
+      - '.github/workflows/tomato-coverage.yml'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+  pull_request:
+    paths:
+      - 'services/orders/**'
+      - 'proto/**'
+      - '.github/workflows/orders.yml'
+      - '.github/workflows/tomato-coverage.yml'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/orders
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/orders/go.mod
+          cache-dependency-path: services/orders/go.sum
+      - run: go vet ./...
+      - name: Unit tests
+        run: go test ./...
+      - name: Build
+        run: CGO_ENABLED=0 go build -o bin/orders .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: |
+            services/orders/bin/orders
+
+  coverage:
+    uses: ./.github/workflows/tomato-coverage.yml
+    with:
+      service: services/orders
+      min-total: 20
+
+  blackbox:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: services/orders/bin/
+      - name: Restore the build
+        run: chmod +x services/orders/bin/orders
+      - uses: ./.github/actions/tomato-blackbox
+        with:
+          service: services/orders
+
+  report:
+    needs: [coverage, blackbox]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/tomato-report
+        with:
+          service: orders

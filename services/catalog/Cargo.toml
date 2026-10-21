@@ -1,0 +1,15 @@
+[package]
+name = "catalog"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+prost = "0.13"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tokio-postgres = "0.7"
+tonic = "0.12"
+tonic-reflection = "0.12"
+
+[build-dependencies]
+tonic-build = "0.12"

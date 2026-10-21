@@ -1,0 +1,15 @@
+# build output
+services/orders/bin/
+services/catalog/target/
+services/payments/build/
+services/payments/.gradle/
+services/gateway/node_modules/
+services/notifications/.venv/
+**/__pycache__/
+*.egg-info/
+
+# tomato run logs and reports
+.tomato/
+reports/
+coverage.md
+coverage.json

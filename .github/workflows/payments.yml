@@ -1,0 +1,90 @@
+name: payments
+
+# payments (Kotlin): build and unit-test it, then test the built artifact as
+# a black box with tomato, and report the results with tomato's step coverage.
+#
+#   build ──────► blackbox ──┐
+#                             ├──► report (job summary + PR comment)
+#   coverage ─────────────────┘
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/payments/**'
+      - '.github/workflows/payments.yml'
+      - '.github/workflows/tomato-coverage.yml'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+  pull_request:
+    paths:
+      - 'services/payments/**'
+      - '.github/workflows/payments.yml'
+      - '.github/workflows/tomato-coverage.yml'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/payments
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests and build
+        run: ./gradlew test installDist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: |
+            services/payments/build/install/payments/
+
+  coverage:
+    uses: ./.github/workflows/tomato-coverage.yml
+    with:
+      service: services/payments
+      min-total: 25
+
+  blackbox:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: services/payments/build/install/payments/
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Restore the build
+        run: chmod +x services/payments/build/install/payments/bin/payments
+      - uses: ./.github/actions/tomato-blackbox
+        with:
+          service: services/payments
+
+  report:
+    needs: [coverage, blackbox]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/tomato-report
+        with:
+          service: payments

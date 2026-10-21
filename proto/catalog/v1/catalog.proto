@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package catalog.v1;
+
+option go_package = "github.com/tomatool/demo/services/orders/gen/catalog/v1;catalogv1";
+
+// CatalogService owns products: their price and how many are in stock.
+// The gateway reads it to show products; orders reserves stock through it.
+service CatalogService {
+  rpc GetProduct(GetProductRequest) returns (Product);
+  rpc ListProducts(ListProductsRequest) returns (ListProductsResponse);
+  // ReserveStock takes quantity units out of stock for an order. It fails
+  // with NOT_FOUND for an unknown sku and FAILED_PRECONDITION when there are
+  // not enough units left.
+  rpc ReserveStock(ReserveStockRequest) returns (Reservation);
+}
+
+message Product {
+  string sku = 1;
+  string name = 2;
+  int64 price_cents = 3;
+  int32 stock = 4;
+}
+
+message GetProductRequest {
+  string sku = 1;
+}
+
+message ListProductsRequest {}
+
+message ListProductsResponse {
+  repeated Product products = 1;
+}
+
+message ReserveStockRequest {
+  string sku = 1;
+  int32 quantity = 2;
+  string order_id = 3;
+}
+
+message Reservation {
+  string sku = 1;
+  int32 quantity = 2;
+  int32 remaining = 3;
+}

@@ -1,0 +1,9 @@
+**/target
+**/node_modules
+**/.venv
+**/build
+**/.gradle
+**/bin
+**/.tomato
+**/reports
+.git

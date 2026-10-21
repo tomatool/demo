@@ -1,0 +1,28 @@
+
+è
+catalog/v1/catalog.proto
+catalog.v1"f
+Product
+sku (	Rsku
+name (	Rname
+price_cents (R
+priceCents
+stock (Rstock"%
+GetProductRequest
+sku (	Rsku"
+ListProductsRequest"G
+ListProductsResponse/
+products (2.catalog.v1.ProductRproducts"^
+ReserveStockRequest
+sku (	Rsku
+quantity (Rquantity
+order_id (	RorderId"Y
+Reservation
+sku (	Rsku
+quantity (Rquantity
+	remaining (R	remaining2Ô
+CatalogService@
+
+GetProduct.catalog.v1.GetProductRequest.catalog.v1.ProductQ
+ListProducts.catalog.v1.ListProductsRequest .catalog.v1.ListProductsResponseH
+ReserveStock.catalog.v1.ReserveStockRequest.catalog.v1.ReservationBCZAgithub.com/tomatool/demo/services/orders/gen/catalog/v1;catalogv1bproto3

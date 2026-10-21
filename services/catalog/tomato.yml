@@ -1,0 +1,50 @@
+# Black-box suite for catalog. tomato starts Postgres, runs the built binary,
+# and calls it over gRPC the way gateway and orders do, finding the methods
+# through server reflection: no generated client next to the tests.
+version: 2
+
+settings:
+  timeout: 5m
+  output: "pretty,junit:reports/junit.xml"
+
+containers:
+  postgres:
+    image: postgres:16-alpine
+    env:
+      POSTGRES_USER: catalog
+      POSTGRES_PASSWORD: catalog
+      POSTGRES_DB: catalog
+    ports: ["5432/tcp"]
+    wait_for:
+      type: port
+      target: "5432"
+
+app:
+  command: ./target/release/catalog  # built by `cargo build --release` / the pipeline's build job
+  port: 50051
+  ready:
+    type: tcp
+    timeout: 60s
+  wait: 1s
+  env:
+    PORT: "50051"
+    DATABASE_URL: "postgres://catalog:catalog@{{.postgres.host}}:{{.postgres.port.5432}}/catalog"
+
+resources:
+  # How gateway and orders reach catalog.
+  grpc:
+    type: grpc
+    address: localhost:50051
+
+  # catalog's own database.
+  db:
+    type: postgres
+    container: postgres
+    database: catalog
+    options:
+      user: catalog
+      password: catalog
+
+features:
+  paths:
+    - ./features

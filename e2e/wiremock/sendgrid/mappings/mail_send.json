@@ -1,0 +1,4 @@
+{
+  "request": { "method": "POST", "url": "/v3/mail/send" },
+  "response": { "status": 202 }
+}

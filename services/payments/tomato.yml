@@ -1,0 +1,81 @@
+# Black-box suite for payments. payments has no API of its own: it reacts to
+# Kafka events. tomato starts Kafka with an MSK IAM listener and RabbitMQ,
+# gives payments its AWS role the way EKS does (IRSA, through tomato's own
+# STS), stands in for Stripe with an HTTP stub, publishes orders the way the
+# orders service does, and asserts on the charge payments made and the
+# outcome it published.
+version: 2
+
+settings:
+  timeout: 5m
+  output: "pretty,junit:reports/junit.xml"
+
+containers:
+  # Like MSK: clients authenticate with SASL AWS_MSK_IAM on port 9098. With the
+  # aws resource below, only sessions of its role get in.
+  kafka:
+    preset: kafka
+    auth: aws_msk_iam
+
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    ports: ["5672/tcp"]
+    wait_for:
+      type: log
+      target: "Server startup complete"
+      timeout: 120s
+
+app:
+  command: ./build/install/payments/bin/payments  # built by `./gradlew installDist` / the pipeline's build job
+  port: 8081
+  ready:
+    type: http
+    path: /health
+    timeout: 90s
+  wait: 1s
+  env:
+    PORT: "8081"
+    KAFKA_BROKERS: "{{.kafka.host}}:{{.kafka.port.9098}}"
+    KAFKA_AUTH: aws_msk_iam
+    KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT   # SASL_SSL against MSK
+    RABBITMQ_URL: "amqp://guest:guest@{{.rabbitmq.host}}:{{.rabbitmq.port.5672}}"
+    STRIPE_API_BASE: "{{.stripe.url}}"
+    STRIPE_API_KEY: sk_test_tomato
+
+resources:
+  # payments' AWS identity: the IRSA role it runs as on EKS.
+  aws:
+    type: aws
+    options:
+      region: eu-central-1
+      role_arn: arn:aws:iam::000000000000:role/payments
+
+  # Where orders announces new orders (tomato uses the broker's plain
+  # listener). No `topics:` here on purpose: tomato resets the topics it lists
+  # by deleting and recreating them, which starts their offsets again from 0
+  # under payments' running consumer. payments creates the topic itself, and
+  # every scenario uses its own order ids.
+  orders:
+    type: kafka
+    container: kafka
+
+  # Where payments publishes outcomes. Each scenario reads them from a queue
+  # of its own bound to the exchange, as orders and notifications do.
+  mq:
+    type: rabbitmq
+    container: rabbitmq
+    options:
+      exchanges:
+        - name: payments
+          type: topic
+          durable: true
+
+  # Stripe, stubbed over HTTP. payments talks to it with Stripe's Java SDK.
+  stripe:
+    type: http-server
+    options:
+      port: 18090
+
+features:
+  paths:
+    - ./features

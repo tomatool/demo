@@ -1,0 +1,46 @@
+# Black-box suite for gateway. gateway has no database or broker: everything
+# it does is call other services, so tomato stands in for both of them, catalog
+# with a gRPC stub built from its proto and orders with an HTTP stub, and
+# asserts on what gateway answers and on what it sent them.
+version: 2
+
+settings:
+  timeout: 5m
+  output: "pretty,junit:reports/junit.xml"
+
+app:
+  command: node src/index.js
+  port: 3000
+  ready:
+    type: http
+    path: /health
+    timeout: 30s
+  wait: 500ms
+  env:
+    PORT: "3000"
+    API_KEY: test-key
+    ORDERS_URL: "{{.orders.url}}"
+    CATALOG_ADDR: "{{.catalog.address}}"
+
+resources:
+  # Callers of the public API.
+  api:
+    type: http
+    base_url: http://localhost:3000
+
+  # The orders service, stubbed over HTTP.
+  orders:
+    type: http-server
+    options:
+      port: 18081
+
+  # The catalog service, stubbed from its proto.
+  catalog:
+    type: grpc-server
+    options:
+      port: 50062
+      descriptor_set: ../../proto/catalog.binpb
+
+features:
+  paths:
+    - ./features

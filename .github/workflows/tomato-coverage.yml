@@ -1,0 +1,51 @@
+name: tomato coverage
+
+# Reusable: validates a service's suite and reports how much of its resources'
+# step vocabulary the suite uses. Needs no build and no Docker, so it runs
+# alongside the build.
+on:
+  workflow_call:
+    inputs:
+      service:
+        type: string
+        required: true
+      min-total:
+        description: Floor for total step coverage, in percent
+        type: number
+        default: 0
+      tomato-version:
+        type: string
+        default: latest
+
+jobs:
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-tomato
+        with:
+          version: ${{ inputs.tomato-version }}
+
+      - name: Validate the suite
+        working-directory: ${{ inputs.service }}
+        run: tomato validate --plain
+
+      - name: Measure step coverage
+        working-directory: ${{ inputs.service }}
+        run: |
+          mkdir -p reports
+          tomato coverage
+          tomato coverage --format json -o reports/coverage.json
+          tomato coverage --format markdown -o reports/coverage-table.md
+          python3 "$GITHUB_WORKSPACE/.github/scripts/coverage.py" \
+            reports/coverage.json reports/coverage-table.md "${{ inputs.min-total }}" "${{ inputs.service }}" \
+            > reports/coverage.md || status=$?
+          cat reports/coverage.md >> "$GITHUB_STEP_SUMMARY"
+          exit ${status:-0}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: ${{ inputs.service }}/reports/coverage*

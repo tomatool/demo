@@ -1,0 +1,4 @@
+{
+  "request": { "method": "POST", "urlPathPattern": "/services/.*" },
+  "response": { "status": 200, "body": "ok" }
+}

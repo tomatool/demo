@@ -1,0 +1,23 @@
+name: Set up tomato
+description: Install a tomato release on the runner.
+inputs:
+  version:
+    description: 'Release tag, such as v2.7.0, or "latest"'
+    default: latest
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        if [ "$VERSION" = latest ]; then
+          VERSION=$(gh release view -R tomatool/tomato --json tagName -q .tagName)
+        fi
+        ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+        TMP=$(mktemp -d)
+        curl -fsSL "https://github.com/tomatool/tomato/releases/download/${VERSION}/tomato_${VERSION#v}_linux_${ARCH}.tar.gz" \
+          | tar -xz -C "$TMP" tomato
+        sudo install -m 0755 "$TMP/tomato" /usr/local/bin/tomato
+        tomato version

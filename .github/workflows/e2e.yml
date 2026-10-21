@@ -1,0 +1,74 @@
+name: e2e
+
+# The five services together, each built from its Dockerfile, with only the
+# third parties (Stripe, SendGrid, Slack) stood in for. Runs on every change
+# to any service, after their own pipelines have tested each one alone.
+#
+#   blackbox ──┐
+#               ├──► report (job summary + PR comment)
+#   coverage ──┘
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'proto/**'
+      - 'e2e/**'
+      - '.github/workflows/e2e.yml'
+      - '.github/workflows/tomato-coverage.yml'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+  pull_request:
+    paths:
+      - 'services/**'
+      - 'proto/**'
+      - 'e2e/**'
+      - '.github/workflows/e2e.yml'
+      - '.github/workflows/tomato-coverage.yml'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    uses: ./.github/workflows/tomato-coverage.yml
+    with:
+      service: e2e
+      min-total: 10
+
+  blackbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      # gateway, the app under test, runs as a local process; the other
+      # services are built into images by tomato from their Dockerfiles.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/gateway/package-lock.json
+      - run: npm ci
+        working-directory: services/gateway
+      - uses: ./.github/actions/tomato-blackbox
+        with:
+          service: e2e
+
+  report:
+    needs: [coverage, blackbox]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/tomato-report
+        with:
+          service: e2e

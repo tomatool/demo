@@ -1,0 +1,39 @@
+name: tomato black-box run
+description: Run a service's tomato suite against its built artifact, and keep the reports.
+inputs:
+  service:
+    description: Directory of the service (with its tomato.yml)
+    required: true
+  tomato-version:
+    default: latest
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup-tomato
+      with:
+        version: ${{ inputs.tomato-version }}
+
+    - name: Run the black-box suite
+      shell: bash
+      working-directory: ${{ inputs.service }}
+      run: tomato run
+
+    - name: Summarise the results
+      if: always()
+      shell: bash
+      working-directory: ${{ inputs.service }}
+      run: |
+        mkdir -p reports
+        python3 "$GITHUB_WORKSPACE/.github/scripts/junit_summary.py" reports/junit.xml > reports/results.md
+        cat reports/results.md >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Keep the reports and logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: blackbox-${{ github.job }}
+        path: |
+          ${{ inputs.service }}/reports/
+          ${{ inputs.service }}/.tomato/runs/
+        include-hidden-files: true
+        if-no-files-found: ignore

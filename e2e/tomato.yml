@@ -1,0 +1,222 @@
+# End-to-end suite: the five services running together, each built from its
+# own Dockerfile, talking over HTTP, gRPC, Kafka (with MSK IAM auth) and
+# RabbitMQ as in production, with S3 for the email archive. Only the third
+# parties, Stripe, SendGrid and Slack, are stand-ins (WireMock), because the
+# real ones are not ours to start.
+#
+# gateway is the app under test; a shopper only ever talks to it. Everything
+# else is checked by its effects: rows in each service's database and the
+# requests the providers received.
+version: 2
+
+settings:
+  timeout: 15m
+  output: "pretty,junit:reports/junit.xml"
+
+containers:
+  postgres:
+    image: postgres:16-alpine
+    env:
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: shop
+      POSTGRES_DB: shop
+    ports: ["5432/tcp"]
+    volumes:
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
+    wait_for:
+      type: log
+      target: "database system is ready to accept connections"
+      timeout: 60s
+
+  # Like MSK: payments signs in on the AWS_MSK_IAM listener (kafka:29098).
+  kafka:
+    preset: kafka
+    auth: aws_msk_iam
+
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    command: ["server", "/data"]
+    env:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports: ["9000/tcp"]
+    wait_for:
+      type: port
+      target: "9000"
+
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    ports: ["5672/tcp"]
+    wait_for:
+      type: log
+      target: "Server startup complete"
+      timeout: 120s
+
+  stripe:
+    image: wiremock/wiremock:3.13.1
+    ports: ["8080/tcp"]
+    volumes:
+      - ./wiremock/stripe:/home/wiremock
+    wait_for:
+      type: http
+      path: /__admin/health
+      target: "8080"
+
+  sendgrid:
+    image: wiremock/wiremock:3.13.1
+    ports: ["8080/tcp"]
+    volumes:
+      - ./wiremock/sendgrid:/home/wiremock
+    wait_for:
+      type: http
+      path: /__admin/health
+      target: "8080"
+
+  slack:
+    image: wiremock/wiremock:3.13.1
+    ports: ["8080/tcp"]
+    volumes:
+      - ./wiremock/slack:/home/wiremock
+    wait_for:
+      type: http
+      path: /__admin/health
+      target: "8080"
+
+  catalog:
+    build:
+      context: ..
+      dockerfile: services/catalog/Dockerfile
+    depends_on: [postgres]
+    env:
+      DATABASE_URL: postgres://shop:shop@postgres:5432/catalog
+    ports: ["50051/tcp"]
+    wait_for:
+      type: port
+      target: "50051"
+      timeout: 60s
+
+  orders:
+    build:
+      context: ..
+      dockerfile: services/orders/Dockerfile
+    depends_on: [postgres, kafka, rabbitmq, catalog]
+    env:
+      DATABASE_URL: postgres://shop:shop@postgres:5432/orders?sslmode=disable
+      CATALOG_ADDR: catalog:50051
+      KAFKA_BROKERS: kafka:29092
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    ports: ["8080/tcp"]
+    wait_for:
+      type: http
+      path: /health
+      target: "8080"
+      timeout: 60s
+
+  payments:
+    build:
+      context: ..
+      dockerfile: services/payments/Dockerfile
+    depends_on: [kafka, rabbitmq, stripe]
+    env:
+      KAFKA_BROKERS: kafka:29098
+      KAFKA_AUTH: aws_msk_iam
+      KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      # On EKS the pod's IAM role; here any identity, as no aws resource
+      # restricts the listener to one role (the payments suite does).
+      AWS_ACCESS_KEY_ID: e2e
+      AWS_SECRET_ACCESS_KEY: e2e
+      AWS_REGION: eu-central-1
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      STRIPE_API_BASE: http://stripe:8080
+      STRIPE_API_KEY: sk_test_e2e
+    ports: ["8081/tcp"]
+    wait_for:
+      type: http
+      path: /health
+      target: "8081"
+      timeout: 120s
+
+  notifications:
+    build:
+      context: ..
+      dockerfile: services/notifications/Dockerfile
+    depends_on: [postgres, rabbitmq, minio, sendgrid, slack]
+    env:
+      DATABASE_URL: postgres://shop:shop@postgres:5432/notifications
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      SENDGRID_API_BASE: http://sendgrid:8080
+      SENDGRID_API_KEY: SG.e2e
+      SLACK_WEBHOOK_URL: http://slack:8080/services/T000/B000/XXXX
+      ARCHIVE_BUCKET: email-archive
+      AWS_ENDPOINT_URL_S3: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: eu-central-1
+    ports: ["8082/tcp"]
+    wait_for:
+      type: http
+      path: /health
+      target: "8082"
+      timeout: 60s
+
+app:
+  command: node ../services/gateway/src/index.js
+  port: 3000
+  ready:
+    type: http
+    path: /health
+    timeout: 30s
+  wait: 1s
+  env:
+    PORT: "3000"
+    API_KEY: e2e-key
+    ORDERS_URL: "http://{{.orders.host}}:{{.orders.port.8080}}"
+    CATALOG_ADDR: "{{.catalog.host}}:{{.catalog.port.50051}}"
+
+resources:
+  # The shopper.
+  shop:
+    type: http
+    base_url: http://localhost:3000
+
+  # Each service's own database, to set up products and check effects.
+  catalog-db:
+    type: postgres
+    container: postgres
+    database: catalog
+    options: { user: shop, password: shop }
+  orders-db:
+    type: postgres
+    container: postgres
+    database: orders
+    options: { user: shop, password: shop }
+  notifications-db:
+    type: postgres
+    container: postgres
+    database: notifications
+    options: { user: shop, password: shop }
+
+  # The email archive.
+  archive:
+    type: s3
+    container: minio
+    options:
+      buckets: [email-archive]
+
+  # WireMock's admin API: what the third parties were asked.
+  stripe:
+    type: http
+    container: stripe
+    options: { port: 8080 }
+  sendgrid:
+    type: http
+    container: sendgrid
+    options: { port: 8080 }
+  slack:
+    type: http
+    container: slack
+    options: { port: 8080 }
+
+features:
+  paths:
+    - ./features

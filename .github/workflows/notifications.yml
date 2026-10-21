@@ -1,0 +1,92 @@
+name: notifications
+
+# notifications (Python): build and unit-test it, then test the built artifact as
+# a black box with tomato, and report the results with tomato's step coverage.
+#
+#   build ──────► blackbox ──┐
+#                             ├──► report (job summary + PR comment)
+#   coverage ─────────────────┘
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/notifications/**'
+      - '.github/workflows/notifications.yml'
+      - '.github/workflows/tomato-coverage.yml'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+  pull_request:
+    paths:
+      - 'services/notifications/**'
+      - '.github/workflows/notifications.yml'
+      - '.github/workflows/tomato-coverage.yml'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/notifications
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/notifications/pyproject.toml
+      - run: pip install -e '.[test]'
+      - name: Unit tests
+        run: python -m pytest
+      - name: Build
+        run: pip wheel --no-deps -w dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: |
+            services/notifications/dist/
+
+  coverage:
+    uses: ./.github/workflows/tomato-coverage.yml
+    with:
+      service: services/notifications
+      min-total: 18
+
+  blackbox:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: services/notifications/dist/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Restore the build
+        run: python -m venv services/notifications/.venv && services/notifications/.venv/bin/pip install services/notifications/dist/*.whl
+      - uses: ./.github/actions/tomato-blackbox
+        with:
+          service: services/notifications
+
+  report:
+    needs: [coverage, blackbox]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/tomato-report
+        with:
+          service: notifications
