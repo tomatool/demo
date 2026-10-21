@@ -32,12 +32,12 @@ app:
 
 resources:
   # How gateway and orders reach catalog.
-  grpc:
+  catalog-client:
     type: grpc
     address: localhost:50051
 
   # catalog's own database.
-  db:
+  catalog-db:
     type: postgres
     container: postgres
     database: catalog

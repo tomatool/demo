@@ -19,23 +19,23 @@ app:
   env:
     PORT: "3000"
     API_KEY: test-key
-    ORDERS_URL: "{{.orders.url}}"
-    CATALOG_ADDR: "{{.catalog.address}}"
+    ORDERS_URL: "{{.orders-stub.url}}"
+    CATALOG_ADDR: "{{.catalog-stub.address}}"
 
 resources:
   # Callers of the public API.
-  api:
+  gateway-client:
     type: http
     base_url: http://localhost:3000
 
   # The orders service, stubbed over HTTP.
-  orders:
+  orders-stub:
     type: http-server
     options:
       port: 18081
 
   # The catalog service, stubbed from its proto.
-  catalog:
+  catalog-stub:
     type: grpc-server
     options:
       port: 50062

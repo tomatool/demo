@@ -42,18 +42,18 @@ app:
   env:
     PORT: "8080"
     DATABASE_URL: "postgres://orders:orders@{{.postgres.host}}:{{.postgres.port.5432}}/orders?sslmode=disable"
-    CATALOG_ADDR: "{{.catalog.address}}"
+    CATALOG_ADDR: "{{.catalog-stub.address}}"
     KAFKA_BROKERS: "{{.kafka.host}}:{{.kafka.port.9092}}"
     RABBITMQ_URL: "amqp://guest:guest@{{.rabbitmq.host}}:{{.rabbitmq.port.5672}}/"
 
 resources:
   # How clients reach orders.
-  api:
+  orders-client:
     type: http
     base_url: http://localhost:8080
 
   # orders' own database, to set up state and assert what was stored.
-  db:
+  orders-db:
     type: postgres
     container: postgres
     database: orders
@@ -62,21 +62,21 @@ resources:
       password: orders
 
   # The catalog service, stubbed from its proto.
-  catalog:
+  catalog-stub:
     type: grpc-server
     options:
       port: 50061
       descriptor_set: ../../proto/catalog.binpb
 
   # What orders announces.
-  events:
+  orders-events:
     type: kafka
     container: kafka
     options:
       topics: [orders.created]
 
   # Where payments reports back.
-  mq:
+  payments-queue:
     type: rabbitmq
     container: rabbitmq
     options:

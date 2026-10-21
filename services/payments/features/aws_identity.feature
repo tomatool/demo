@@ -6,5 +6,5 @@ Feature: Signing in to MSK with the service's IAM role
 
   Scenario: payments signs in to Kafka as its own role
     Then "aws" role "arn:aws:iam::000000000000:role/payments" was assumed
-    And "orders" consumer group "payments" is consuming "orders.created" within "60s"
+    And "orders-events" consumer group "payments" is consuming "orders.created" within "60s"
     And "aws" role "arn:aws:iam::000000000000:role/orders" was not assumed

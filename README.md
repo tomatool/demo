@@ -67,14 +67,14 @@ containers:          # its real dependencies, started fresh for the run
 app:                 # the service itself: the binary the build job produced
   command: ./bin/orders
   env:
-    CATALOG_ADDR: "{{.catalog.address}}"      # ← the stub below
+    CATALOG_ADDR: "{{.catalog-stub.address}}" # ← the stub below
     KAFKA_BROKERS: "{{.kafka.host}}:{{.kafka.port.9092}}"
 
 resources:           # how the suite reaches it, and stands in for its neighbours
-  api:     { type: http, base_url: http://localhost:8080 }
-  catalog: { type: grpc-server, options: { descriptor_set: ../../proto/catalog.binpb } }
-  db:      { type: postgres, container: postgres }
-  events:  { type: kafka, container: kafka }
+  orders-client: { type: http, base_url: http://localhost:8080 }
+  catalog-stub:  { type: grpc-server, options: { descriptor_set: ../../proto/catalog.binpb } }
+  orders-db:     { type: postgres, container: postgres }
+  orders-events: { type: kafka, container: kafka }
 ```
 
 and a scenario reads like the behaviour it checks, including the effects
@@ -82,12 +82,12 @@ other services see, not only the response:
 
 ```gherkin
 Scenario: An order is priced, reserved, stored and announced
-  Given "catalog" stub "catalog.v1.CatalogService/GetProduct" returns json: ...
-  When "api" sends "POST" to "/orders" with json: ...
-  Then "api" response status is "201"
-  And "catalog" received "catalog.v1.CatalogService/ReserveStock" "2" times
-  And "db" table "order_items" has "2" rows
-  And "events" receives from "orders.created" within "10s"
+  Given "catalog-stub" stub "catalog.v1.CatalogService/GetProduct" returns json: ...
+  When "orders-client" sends "POST" to "/orders" with json: ...
+  Then "orders-client" response status is "201"
+  And "catalog-stub" received "catalog.v1.CatalogService/ReserveStock" "2" times
+  And "orders-db" table "order_items" has "2" rows
+  And "orders-events" receives from "orders.created" within "10s"
 ```
 
 What each suite does:

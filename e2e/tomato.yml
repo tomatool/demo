@@ -178,8 +178,8 @@ app:
     CATALOG_ADDR: "{{.catalog.host}}:{{.catalog.port.50051}}"
 
 resources:
-  # The shopper.
-  shop:
+  # The shopper, calling gateway (the app under test).
+  gateway-client:
     type: http
     base_url: http://localhost:3000
 
@@ -201,22 +201,22 @@ resources:
     options: { user: shop, password: shop }
 
   # The email archive.
-  archive:
+  archive-storage:
     type: s3
     container: minio
     options:
       buckets: [email-archive]
 
   # WireMock's admin API: what the third parties were asked.
-  stripe:
+  stripe-wiremock-client:
     type: http
     container: stripe
     options: { port: 8080 }
-  sendgrid:
+  sendgrid-wiremock-client:
     type: http
     container: sendgrid
     options: { port: 8080 }
-  slack:
+  slack-wiremock-client:
     type: http
     container: slack
     options: { port: 8080 }

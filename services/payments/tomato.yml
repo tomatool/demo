@@ -39,7 +39,7 @@ app:
     KAFKA_AUTH: aws_msk_iam
     KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT   # SASL_SSL against MSK
     RABBITMQ_URL: "amqp://guest:guest@{{.rabbitmq.host}}:{{.rabbitmq.port.5672}}"
-    STRIPE_API_BASE: "{{.stripe.url}}"
+    STRIPE_API_BASE: "{{.stripe-stub.url}}"
     STRIPE_API_KEY: sk_test_tomato
 
 resources:
@@ -55,13 +55,13 @@ resources:
   # by deleting and recreating them, which starts their offsets again from 0
   # under payments' running consumer. payments creates the topic itself, and
   # every scenario uses its own order ids.
-  orders:
+  orders-events:
     type: kafka
     container: kafka
 
   # Where payments publishes outcomes. Each scenario reads them from a queue
   # of its own bound to the exchange, as orders and notifications do.
-  mq:
+  payments-queue:
     type: rabbitmq
     container: rabbitmq
     options:
@@ -71,7 +71,7 @@ resources:
           durable: true
 
   # Stripe, stubbed over HTTP. payments talks to it with Stripe's Java SDK.
-  stripe:
+  stripe-stub:
     type: http-server
     options:
       port: 18090
