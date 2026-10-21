@@ -1,0 +1,59 @@
+name: report
+
+# Publishes the test report to GitHub Pages (tomatool.github.io/demo) whenever
+# a pipeline finishes on main: the latest run of every service and of e2e,
+# with each service's code coverage, scenarios, step coverage, the commit it
+# tested and the tomato version it ran with.
+
+on:
+  workflow_run:
+    workflows: [gateway, orders, catalog, payments, notifications, e2e]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Collect the latest run of every pipeline on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for wf in gateway orders catalog payments notifications e2e; do
+            mkdir -p "data/$wf"
+            gh run list -R "$GITHUB_REPOSITORY" -w "$wf" -b main -s completed -L 1 \
+              --json databaseId,headSha,conclusion,createdAt,displayTitle > "data/$wf/meta.json"
+            id=$(jq -r '.[0].databaseId // empty' "data/$wf/meta.json")
+            [ -n "$id" ] || continue
+            for artifact in code-coverage coverage blackbox-blackbox; do
+              gh run download "$id" -R "$GITHUB_REPOSITORY" -n "$artifact" -D "data/$wf/$artifact" || true
+            done
+          done
+      - name: Build the page
+        run: python3 .github/scripts/report.py data site
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

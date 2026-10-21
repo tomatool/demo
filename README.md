@@ -12,6 +12,10 @@ and talks to it only the way the rest of the system does. No test imports a
 line of the service's code, so the same kind of suite tests Go, Rust, Kotlin,
 Python and Node.js.
 
+**Test report:** [tomatool.github.io/demo](https://tomatool.github.io/demo/), the
+architecture with each service's coverage and the latest end-to-end run,
+rebuilt after every pipeline on `main`.
+
 ## The shop
 
 ```mermaid

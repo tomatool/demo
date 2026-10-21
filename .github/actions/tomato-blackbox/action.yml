@@ -24,6 +24,7 @@ runs:
       working-directory: ${{ inputs.service }}
       run: |
         mkdir -p reports
+        tomato version | head -1 | awk '{print $NF}' > reports/tomato-version.txt
         python3 "$GITHUB_WORKSPACE/.github/scripts/junit_summary.py" reports/junit.xml > reports/results.md
         cat reports/results.md >> "$GITHUB_STEP_SUMMARY"
 
